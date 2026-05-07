@@ -1,0 +1,6 @@
+Pillow>=10.0.0
+pygame>=2.5.0
+# Optional – only needed for nicely connected/right-to-left Arabic text on the
+# win/lose screens. The game still runs (with isolated-letter Arabic) without them.
+arabic-reshaper>=3.0.0
+python-bidi>=0.4.2

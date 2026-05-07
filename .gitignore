@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+*.pyo
+
+# Sprites are regenerated on demand from sprites.py.
+# Comment the next line out if you want to commit the prebuilt PNGs.
+assets/
