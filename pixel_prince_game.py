@@ -9,9 +9,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional, Set, Tuple
-import tkinter as tk
 
-from PIL import Image, ImageDraw, ImageTk
+from PIL import Image, ImageDraw
+
+try:
+    import tkinter as tk
+except ImportError:  # pragma: no cover - depends on the host Python build
+    tk = None
 
 
 TILE = 16
@@ -441,8 +445,13 @@ class PixelRenderer:
 
 class PixelPrinceApp:
     def __init__(self, root: tk.Tk) -> None:
+        if tk is None:
+            raise RuntimeError("Tkinter is required to open the game window.")
+        from PIL import ImageTk
+
         self.root = root
         self.root.title("Pixel Palace Prince - Pillow Animation")
+        self.image_tk = ImageTk
         self.keys: Set[str] = set()
         self.world = GameWorld()
         self.renderer = PixelRenderer()
@@ -453,7 +462,7 @@ class PixelPrinceApp:
             highlightthickness=0,
         )
         self.canvas.pack()
-        self.photo: Optional[ImageTk.PhotoImage] = None
+        self.photo: Optional[object] = None
 
         root.bind("<KeyPress>", self._on_key_press)
         root.bind("<KeyRelease>", self._on_key_release)
@@ -476,12 +485,14 @@ class PixelPrinceApp:
         self.world.update(self.keys)
         frame = self.renderer.render(self.world)
         scaled = frame.resize((SCREEN_SIZE[0] * SCALE, SCREEN_SIZE[1] * SCALE), RESAMPLE_NEAREST)
-        self.photo = ImageTk.PhotoImage(scaled)
+        self.photo = self.image_tk.PhotoImage(scaled)
         self.canvas.create_image(0, 0, anchor=tk.NW, image=self.photo)
         self.root.after(16, self._loop)
 
 
 def main() -> None:
+    if tk is None:
+        raise SystemExit("Tkinter is not installed. Install python3-tk, then run again.")
     root = tk.Tk()
     PixelPrinceApp(root)
     root.mainloop()
