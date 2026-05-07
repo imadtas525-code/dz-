@@ -4,16 +4,18 @@ from __future__ import annotations
 
 import argparse
 import time
-import tkinter as tk
 from pathlib import Path
-
-from PIL import ImageTk
+from typing import Any
 
 from pixel_prince import Game, InputState, PixelRenderer, scripted_preview_gif
 
 
 class PixelPrinceApp:
     def __init__(self, scale: int = 4) -> None:
+        import tkinter as tk
+        from PIL import ImageTk
+
+        self.ImageTk = ImageTk
         self.root = tk.Tk()
         self.root.title("Pixel Prince - Pillow Animation")
         self.root.resizable(False, False)
@@ -36,10 +38,10 @@ class PixelPrinceApp:
     def run(self) -> None:
         self.root.mainloop()
 
-    def _key_down(self, event: tk.Event) -> None:
+    def _key_down(self, event: Any) -> None:
         self._set_key(event.keysym, True)
 
-    def _key_up(self, event: tk.Event) -> None:
+    def _key_up(self, event: Any) -> None:
         self._set_key(event.keysym, False)
 
     def _set_key(self, key: str, pressed: bool) -> None:
@@ -64,7 +66,7 @@ class PixelPrinceApp:
 
         self.game.update(dt, self.controls)
         frame = self.renderer.render_scaled(self.game, self.scale)
-        self.photo = ImageTk.PhotoImage(frame)
+        self.photo = self.ImageTk.PhotoImage(frame)
         self.label.configure(image=self.photo)
         self.root.after(16, self._tick)
 

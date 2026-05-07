@@ -7,8 +7,8 @@
 ## التشغيل
 
 ```bash
-python -m pip install -r requirements.txt
-python run_game.py
+python3 -m pip install -r requirements.txt
+python3 run_game.py
 ```
 
 ## التحكم
@@ -24,7 +24,7 @@ python run_game.py
 ## تصدير أنيميشن GIF باستخدام Pillow
 
 ```bash
-python run_game.py --gif artifacts/pixel_prince.gif --frames 180 --scale 4
+python3 run_game.py --gif artifacts/pixel_prince.gif --frames 180 --scale 4
 ```
 
 هذا ينشئ عرضاً متحركاً قصيراً بدون فتح نافذة، مناسباً للبيئات التي لا تحتوي على
@@ -33,5 +33,5 @@ python run_game.py --gif artifacts/pixel_prince.gif --frames 180 --scale 4
 ## الاختبارات
 
 ```bash
-python -m unittest
+python3 -m unittest discover -s tests
 ```
