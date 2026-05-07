@@ -11,6 +11,12 @@ python3 -m pip install -r requirements.txt
 python3 run_game.py
 ```
 
+## نسخة تعمل في المتصفح
+
+توجد نسخة Canvas خفيفة للتجربة المباشرة من المتصفح:
+
+https://htmlpreview.github.io/?https://github.com/imadtas525-code/dz-/blob/cursor/pillow-pixel-prince-game-f915/docs/index.html
+
 ## التحكم
 
 - الأسهم أو `A/D`: الحركة يميناً ويساراً

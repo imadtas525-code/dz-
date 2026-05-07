@@ -1,0 +1,522 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pixel Prince - Browser Demo</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #100c21;
+      --panel: #20172d;
+      --gold: #f6c75e;
+      --text: #f1e0b4;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background:
+        radial-gradient(circle at 75% 12%, rgba(246, 199, 94, 0.18), transparent 12rem),
+        linear-gradient(180deg, #100c21 0%, #2a1a38 100%);
+      color: var(--text);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    main {
+      width: min(96vw, 820px);
+      padding: 20px;
+      text-align: center;
+    }
+
+    h1 {
+      margin: 0 0 10px;
+      color: var(--gold);
+      letter-spacing: 0.04em;
+    }
+
+    .screen {
+      display: inline-block;
+      padding: 12px;
+      border: 3px solid var(--gold);
+      border-radius: 16px;
+      background: var(--panel);
+      box-shadow: 0 22px 70px rgba(0, 0, 0, 0.45);
+    }
+
+    canvas {
+      width: min(90vw, 640px);
+      height: auto;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+      display: block;
+      border-radius: 8px;
+      background: #100c21;
+    }
+
+    .help {
+      margin: 14px auto 0;
+      max-width: 650px;
+      line-height: 1.7;
+      color: #dbc18c;
+    }
+
+    .keys {
+      direction: ltr;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    kbd {
+      padding: 4px 8px;
+      border: 1px solid #6f4731;
+      border-radius: 6px;
+      background: #140f1d;
+      color: #fff1c7;
+      box-shadow: inset 0 -2px 0 #342238;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Pixel Prince</h1>
+    <div class="screen">
+      <canvas id="game" width="160" height="104" aria-label="Pixel Prince browser game"></canvas>
+    </div>
+    <p class="help">
+      اجمع الجواهر الثلاثة وافتح باب القصر. هذه نسخة متصفح خفيفة من اللعبة، أما
+      نسخة Python الأصلية في المستودع ترسم الإطارات باستخدام Pillow وتصدر GIF.
+    </p>
+    <div class="keys">
+      <kbd>←</kbd><kbd>→</kbd><kbd>A</kbd><kbd>D</kbd>
+      <kbd>Space</kbd><kbd>↑</kbd><kbd>Shift</kbd><kbd>Z</kbd><kbd>R</kbd>
+    </div>
+  </main>
+
+  <script>
+    const TILE = 8;
+    const W = 160;
+    const H = 104;
+    const PLAYER_W = 6;
+    const PLAYER_H = 13;
+    const GRAVITY = 560;
+    const SPEED = 62;
+    const JUMP = 178;
+
+    const rows = [
+      ".............................................................",
+      ".............................................................",
+      ".............................................................",
+      ".............................*...............................",
+      ".......................######................................",
+      "...........*...............................D.................",
+      ".......########.........................########.............",
+      "....................^........................................",
+      "...P............#######............G.........................",
+      "#########........................#########..........*........",
+      "..........................####...................#######.....",
+      "..............G..............................................",
+      "#############################################################",
+    ];
+
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
+    ctx.imageSmoothingEnabled = false;
+
+    const keys = new Set();
+    let spawn = { x: 0, y: 0 };
+    let door = { x: 0, y: 0 };
+    let gems = [];
+    let guards = [];
+
+    function parseLevel() {
+      gems = [];
+      guards = [];
+      for (let y = 0; y < rows.length; y++) {
+        for (let x = 0; x < rows[y].length; x++) {
+          const tile = rows[y][x];
+          if (tile === "P") spawn = { x: x * TILE + 1, y: (y + 1) * TILE - PLAYER_H };
+          if (tile === "D") door = { x: x * TILE, y: (y + 1) * TILE - TILE * 2 };
+          if (tile === "*") gems.push({ x: x * TILE + 2, y: y * TILE + 2, collected: false });
+          if (tile === "G") guards.push({
+            x: x * TILE + 1,
+            y: (y + 1) * TILE - 13,
+            left: Math.max(0, x * TILE - 32),
+            right: Math.min(rows[0].length * TILE - 8, x * TILE + 40),
+            dir: -1,
+            hp: 2,
+            stun: 0,
+            cooldown: 0,
+          });
+        }
+      }
+    }
+
+    const state = {
+      player: null,
+      elapsed: 0,
+      camera: 0,
+      message: "Collect the three moon gems and reach the palace door.",
+      won: false,
+    };
+
+    function reset(keepHealth = false, keepGems = false) {
+      const old = state.player;
+      state.player = {
+        x: spawn.x,
+        y: spawn.y,
+        vx: 0,
+        vy: 0,
+        facing: 1,
+        onGround: false,
+        health: keepHealth && old ? old.health : 3,
+        gems: keepGems && old ? old.gems : 0,
+        attack: 0,
+        invulnerable: keepHealth ? 1 : 0,
+        dead: false,
+      };
+      state.camera = 0;
+      state.won = false;
+      if (!keepGems) gems.forEach(gem => gem.collected = false);
+      state.message = "Collect the three moon gems and reach the palace door.";
+    }
+
+    parseLevel();
+    reset();
+
+    window.addEventListener("keydown", event => {
+      if (["ArrowLeft", "ArrowRight", "ArrowUp", " ", "Shift", "KeyA", "KeyD", "KeyW", "KeyZ", "KeyX"].includes(event.code)) {
+        event.preventDefault();
+      }
+      keys.add(event.code);
+      if (event.code === "KeyR") {
+        parseLevel();
+        reset();
+      }
+    });
+
+    window.addEventListener("keyup", event => keys.delete(event.code));
+
+    function rect(a) {
+      return { left: a.x, top: a.y, right: a.x + a.w, bottom: a.y + a.h };
+    }
+
+    function overlaps(a, b) {
+      return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+    }
+
+    function tileAt(tx, ty) {
+      if (ty < 0 || ty >= rows.length || tx < 0 || tx >= rows[0].length) return ".";
+      return rows[ty][tx];
+    }
+
+    function solid(tx, ty) {
+      if (tx < 0 || tx >= rows[0].length || ty >= rows.length) return true;
+      if (ty < 0) return false;
+      return tileAt(tx, ty) === "#";
+    }
+
+    function hitsSolid(p) {
+      const left = Math.floor(p.x / TILE);
+      const right = Math.floor((p.x + PLAYER_W - 1) / TILE);
+      const top = Math.floor(p.y / TILE);
+      const bottom = Math.floor((p.y + PLAYER_H - 1) / TILE);
+      for (let y = top; y <= bottom; y++) {
+        for (let x = left; x <= right; x++) {
+          if (solid(x, y)) return true;
+        }
+      }
+      return false;
+    }
+
+    function moveAxis(p, amount, axis) {
+      if (axis === "x") p.x += amount;
+      else {
+        p.y += amount;
+        p.onGround = false;
+      }
+
+      if (!hitsSolid(p)) return;
+      const step = amount > 0 ? -1 : 1;
+      while (hitsSolid(p)) {
+        if (axis === "x") p.x += step;
+        else p.y += step;
+      }
+      if (axis === "x") p.vx = 0;
+      else {
+        if (amount > 0) p.onGround = true;
+        p.vy = 0;
+      }
+    }
+
+    function hurtPlayer() {
+      const p = state.player;
+      if (p.invulnerable > 0 || p.dead) return;
+      p.health -= 1;
+      if (p.health <= 0) {
+        p.dead = true;
+        state.message = "Game over. Press R to try again.";
+        return;
+      }
+      reset(true, true);
+      state.message = "The prince is hurt! Find your rhythm.";
+    }
+
+    function strikeGuards() {
+      const p = state.player;
+      const hit = {
+        left: p.x + (p.facing > 0 ? PLAYER_W : -9),
+        top: p.y + 3,
+        right: p.x + (p.facing > 0 ? PLAYER_W + 9 : 0),
+        bottom: p.y + 11,
+      };
+      guards.forEach(guard => {
+        if (guard.hp <= 0 || guard.stun > 0) return;
+        if (overlaps(hit, rect({ x: guard.x, y: guard.y, w: 7, h: 13 }))) {
+          guard.hp -= 1;
+          guard.stun = 0.35;
+          guard.dir *= -1;
+          state.message = guard.hp <= 0 ? "The path is clear." : "A palace guard is staggered!";
+        }
+      });
+    }
+
+    function update(dt) {
+      const p = state.player;
+      dt = Math.min(dt, 1 / 20);
+      state.elapsed += dt;
+      if (p.dead || state.won) return;
+
+      p.attack = Math.max(0, p.attack - dt);
+      p.invulnerable = Math.max(0, p.invulnerable - dt);
+
+      const left = keys.has("ArrowLeft") || keys.has("KeyA");
+      const right = keys.has("ArrowRight") || keys.has("KeyD");
+      const jump = keys.has("ArrowUp") || keys.has("KeyW") || keys.has("Space");
+      const attack = keys.has("ShiftLeft") || keys.has("ShiftRight") || keys.has("KeyZ") || keys.has("KeyX");
+
+      const move = (right ? 1 : 0) - (left ? 1 : 0);
+      p.vx = move * SPEED;
+      if (move) p.facing = move;
+      if (jump && p.onGround) {
+        p.vy = -JUMP;
+        p.onGround = false;
+      }
+      if (attack && p.attack <= 0) {
+        p.attack = 0.24;
+        strikeGuards();
+      }
+
+      p.vy += GRAVITY * dt;
+      moveAxis(p, p.vx * dt, "x");
+      moveAxis(p, p.vy * dt, "y");
+
+      guards.forEach(guard => {
+        if (guard.hp <= 0) return;
+        guard.stun = Math.max(0, guard.stun - dt);
+        guard.cooldown = Math.max(0, guard.cooldown - dt);
+        if (guard.stun <= 0) {
+          guard.x += guard.dir * 26 * dt;
+          if (guard.x < guard.left) { guard.x = guard.left; guard.dir = 1; }
+          if (guard.x > guard.right) { guard.x = guard.right; guard.dir = -1; }
+        }
+        if (overlaps(rect({ x: p.x, y: p.y, w: PLAYER_W, h: PLAYER_H }), rect({ x: guard.x, y: guard.y, w: 7, h: 13 }))) {
+          if (p.attack > 0.09) strikeGuards();
+          else if (guard.cooldown <= 0) {
+            hurtPlayer();
+            guard.cooldown = 0.9;
+          }
+        }
+      });
+
+      gems.forEach(gem => {
+        if (!gem.collected && overlaps(rect({ x: p.x, y: p.y, w: PLAYER_W, h: PLAYER_H }), rect({ x: gem.x, y: gem.y, w: 5, h: 5 }))) {
+          gem.collected = true;
+          p.gems += 1;
+          state.message = `Moon gem collected: ${p.gems}/${gems.length}`;
+        }
+      });
+
+      const leftTile = Math.floor(p.x / TILE);
+      const rightTile = Math.floor((p.x + PLAYER_W - 1) / TILE);
+      const topTile = Math.floor(p.y / TILE);
+      const bottomTile = Math.floor((p.y + PLAYER_H - 1) / TILE);
+      for (let y = topTile; y <= bottomTile; y++) {
+        for (let x = leftTile; x <= rightTile; x++) {
+          if (tileAt(x, y) === "^") hurtPlayer();
+        }
+      }
+
+      const doorRect = rect({ x: door.x, y: door.y, w: 8, h: 16 });
+      if (overlaps(rect({ x: p.x, y: p.y, w: PLAYER_W, h: PLAYER_H }), doorRect)) {
+        if (p.gems === gems.length) {
+          state.won = true;
+          state.message = "You escaped the moon palace!";
+        } else {
+          state.message = "The door needs every moon gem.";
+        }
+      }
+
+      if (p.y > rows.length * TILE) hurtPlayer();
+      state.camera = Math.max(0, Math.min(rows[0].length * TILE - W, p.x - W * 0.45));
+    }
+
+    function sx(x) {
+      return Math.round(x - state.camera);
+    }
+
+    function fill(color) {
+      ctx.fillStyle = color;
+    }
+
+    function draw() {
+      fill("#100c21");
+      ctx.fillRect(0, 0, W, H);
+      fill("#2a1a38");
+      ctx.fillRect(0, 73, W, 31);
+
+      fill("#e0cd92");
+      ctx.beginPath();
+      ctx.arc(132 - Math.floor(state.camera * 0.08), 15, 7, 0, Math.PI * 2);
+      ctx.fill();
+
+      fill("#362239");
+      [0, 38, 84, 132, 188].forEach((base, index) => {
+        const x = base - Math.floor(state.camera * 0.2) % 220;
+        const h = [24, 33, 27, 36, 29][index];
+        ctx.fillRect(x, 73 - h, 20, h);
+        ctx.fillRect(x + 7, 64 - h, 6, 9);
+      });
+
+      const first = Math.max(0, Math.floor(state.camera / TILE) - 1);
+      const last = Math.min(rows[0].length, Math.floor((state.camera + W) / TILE) + 2);
+      for (let y = 0; y < rows.length; y++) {
+        for (let x = first; x < last; x++) {
+          const tile = tileAt(x, y);
+          const px = sx(x * TILE);
+          const py = y * TILE;
+          if (tile === "#") {
+            fill("#b3753e");
+            ctx.fillRect(px, py, 8, 8);
+            fill("#74472d");
+            ctx.fillRect(px, py + 7, 8, 1);
+            ctx.fillRect(px + ((x + y) % 2) * 4, py, 1, 8);
+            fill("#f1e0b4");
+            ctx.fillRect(px + 2, py + 3, 1, 1);
+          } else if (tile === "^") {
+            fill("#a0a6aa");
+            ctx.beginPath();
+            ctx.moveTo(px, py + 7);
+            ctx.lineTo(px + 3, py + 1);
+            ctx.lineTo(px + 7, py + 7);
+            ctx.closePath();
+            ctx.fill();
+          }
+        }
+      }
+
+      fill(gems.every(gem => gem.collected) ? "#261628" : "#493136");
+      ctx.fillRect(sx(door.x) + 1, door.y + 2, 6, 14);
+      fill("#74472d");
+      ctx.fillRect(sx(door.x) - 1, door.y - 1, 10, 1);
+      ctx.fillRect(sx(door.x) - 1, door.y - 1, 1, 17);
+      ctx.fillRect(sx(door.x) + 8, door.y - 1, 1, 17);
+
+      gems.forEach(gem => {
+        if (gem.collected) return;
+        const x = sx(gem.x);
+        const y = gem.y - ((Math.floor(state.elapsed * 8) % 4) < 2 ? 1 : 0);
+        fill("#f6c75e");
+        ctx.fillRect(x + 2, y, 2, 1);
+        ctx.fillRect(x, y + 2, 6, 2);
+        ctx.fillRect(x + 2, y + 4, 2, 1);
+        fill("#fff1c7");
+        ctx.fillRect(x + 2, y + 1, 1, 1);
+      });
+
+      guards.forEach(guard => {
+        if (guard.hp <= 0) return;
+        const wobble = Math.floor(state.elapsed * 10) % 2;
+        const x = sx(guard.x) + (guard.stun > 0 ? Math.floor(state.elapsed * 30) % 2 : 0);
+        const y = Math.floor(guard.y);
+        fill("#9f2f32");
+        ctx.fillRect(x + 1, y + 3, 6, 8);
+        fill("#c78858");
+        ctx.fillRect(x + 2, y, 4, 4);
+        fill("#74472d");
+        ctx.fillRect(x + 1, y - 1, 6, 2);
+        fill("#2f252a");
+        ctx.fillRect(x + 1, y + 10, 2, 4 + wobble);
+        ctx.fillRect(x + 5, y + 10, 2, 4 - wobble);
+        fill("#c2c6c9");
+        ctx.fillRect(guard.dir < 0 ? x - 4 : x + 7, y + 5, 5, 1);
+      });
+
+      const p = state.player;
+      const flicker = p.invulnerable > 0 && Math.floor(state.elapsed * 18) % 2 === 0;
+      if (!flicker) {
+        const x = sx(p.x);
+        const y = Math.floor(p.y);
+        const run = Math.abs(p.vx) > 1 && p.onGround ? Math.floor(state.elapsed * 12) % 2 : 0;
+        fill("#d4955c");
+        ctx.fillRect(x + 2, y, 3, 4);
+        fill("#f1e0b4");
+        ctx.fillRect(x + 1, y + 3, 5, 7);
+        fill("#9f2f32");
+        ctx.fillRect(x + 1, y + 6, 5, 1);
+        fill("#396997");
+        ctx.fillRect(x + 1, y + 9, 2, 4 + run);
+        ctx.fillRect(x + 5, y + 9, 2, 4 - run);
+        fill("#d4955c");
+        ctx.fillRect(p.facing > 0 ? x + 5 : x - 3, y + 4, 5, 1);
+        if (p.attack > 0) {
+          fill("#dce1e2");
+          ctx.fillRect(p.facing > 0 ? x + 5 : x - 9, y + 3, 11, 1);
+        } else {
+          fill("#231b24");
+          ctx.fillRect(x + 1, y + 1, 5, 1);
+        }
+      }
+
+      for (let i = 0; i < 3; i++) {
+        fill(i < p.health ? "#9f2f32" : "#433137");
+        ctx.fillRect(4 + i * 7, 4, 5, 5);
+      }
+      fill("#f6c75e");
+      ctx.font = "8px monospace";
+      ctx.fillText(`gems ${p.gems}/${gems.length}`, 28, 9);
+
+      fill("#dbc18c");
+      ctx.fillText(state.message.slice(0, 36), 4, 99);
+      if (state.won || p.dead) {
+        fill("#120e17");
+        ctx.fillRect(20, 39, 120, 22);
+        fill("#f6c75e");
+        ctx.strokeRect(20, 39, 120, 22);
+        fill("#f1e0b4");
+        ctx.fillText(state.message, 30, 52);
+      }
+    }
+
+    let last = performance.now();
+    function loop(now) {
+      update((now - last) / 1000);
+      draw();
+      last = now;
+      requestAnimationFrame(loop);
+    }
+
+    requestAnimationFrame(loop);
+  </script>
+</body>
+</html>
