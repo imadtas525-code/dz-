@@ -205,6 +205,56 @@ death_frames = [
 ]
 
 # ----------------------------------
+# فريمات مشي العدو
+# ----------------------------------
+# 6 صور للأنيميشن. لو غيّرت أسماء الملفات، عدّلها هنا فقط.
+
+enemy_width = 80
+enemy_height = 80
+
+enemy_walk_frames = [
+
+    pygame.image.load(
+        "c:/Users/عماد الدين/Desktop/assets/enemy_walk_1.png"
+    ).convert_alpha(),
+
+    pygame.image.load(
+        "c:/Users/عماد الدين/Desktop/assets/enemy_walk_2.png"
+    ).convert_alpha(),
+
+    pygame.image.load(
+        "c:/Users/عماد الدين/Desktop/assets/enemy_walk_3.png"
+    ).convert_alpha(),
+
+    pygame.image.load(
+        "c:/Users/عماد الدين/Desktop/assets/enemy_walk_4.png"
+    ).convert_alpha(),
+
+    pygame.image.load(
+        "c:/Users/عماد الدين/Desktop/assets/enemy_walk_5.png"
+    ).convert_alpha(),
+
+    pygame.image.load(
+        "c:/Users/عماد الدين/Desktop/assets/enemy_walk_6.png"
+    ).convert_alpha()
+]
+
+# هل الصور الأصلية ينظر العدو فيها لليمين؟
+# - True  : لو الرسمة الأصلية وجهها لليمين  (سنعكسها لما يمشي يساراً)
+# - False : لو الرسمة الأصلية وجهها لليسار (سنعكسها لما يمشي يميناً)
+# غيّر القيمة هذه فقط لو لقيت العدو يمشي بالعكس.
+
+enemy_image_faces_right = False
+
+# تكبير فريمات العدو لحجم enemy_width × enemy_height
+for i in range(len(enemy_walk_frames)):
+
+    enemy_walk_frames[i] = pygame.transform.scale(
+        enemy_walk_frames[i],
+        (enemy_width, enemy_height)
+    )
+
+# ----------------------------------
 # تكبير الصور
 # ----------------------------------
 
@@ -543,14 +593,16 @@ while running:
         enemy = {
             "rect": pygame.Rect(
                 new_enemy_x,
-                HEIGHT - ground_height - 40,
-                40,
-                40
+                HEIGHT - ground_height - enemy_height,
+                enemy_width,
+                enemy_height
             ),
             "direction": -1,                    # يبدأ بالمشي لليسار (باتجاه اللاعب)
             "speed": enemy_speed,
             "start_x": new_enemy_x,             # نقطة البداية (مرجع للدورية)
-            "patrol_range": enemy_patrol_range  # نصف المسافة اللي يتحرك فيها يميناً ويساراً
+            "patrol_range": enemy_patrol_range, # نصف المسافة اللي يتحرك فيها يميناً ويساراً
+            "frame": 0,                         # رقم الفريم الحالي للأنيميشن
+            "frame_speed": 0.15                 # سرعة تقدّم الفريمات (كلما زادت = أسرع)
         }
 
         enemies.append(enemy)
@@ -570,6 +622,11 @@ while running:
 
         # تحريك العدو حسب اتجاهه الحالي
         enemy["rect"].x += enemy["direction"] * enemy["speed"]
+
+        # تقدّم فريم الأنيميشن، ثم لفّه إلى البداية إذا انتهت الفريمات
+        enemy["frame"] += enemy["frame_speed"]
+        if enemy["frame"] >= len(enemy_walk_frames):
+            enemy["frame"] = 0
 
         # حساب الحدود اليمنى واليسرى للدورية حول نقطة البداية
         left_limit = enemy["start_x"] - enemy["patrol_range"]
@@ -715,22 +772,33 @@ while running:
     )
 
     # ----------------------------------
-    # رسم الأعداء
+    # رسم الأعداء (بالأنيميشن)
     # ----------------------------------
-    # نقرأ من enemy["rect"] بدل enemy مباشرة
+    # 1) نختار الفريم الحالي حسب enemy["frame"].
+    # 2) نقرر هل نعكسه أفقياً اعتماداً على اتجاه العدو واتجاه الصورة الأصلية.
+    #    - direction = -1 يعني يمشي يساراً.
+    #    - direction = +1 يعني يمشي يميناً.
+    # 3) نرسمه عند موقع enemy["rect"] مع طرح camera_x.
 
     for enemy in enemies:
 
         enemy_rect = enemy["rect"]
 
-        pygame.draw.rect(
-            screen,
-            YELLOW,
+        enemy_image = enemy_walk_frames[int(enemy["frame"])]
+
+        # هل يجب عكس الصورة؟
+        # لو الصورة الأصلية وجهها لليمين  وكان يمشي يساراً  -> اعكس.
+        # لو الصورة الأصلية وجهها لليسار وكان يمشي يميناً  -> اعكس.
+        if enemy_image_faces_right and enemy["direction"] == -1:
+            enemy_image = pygame.transform.flip(enemy_image, True, False)
+        elif (not enemy_image_faces_right) and enemy["direction"] == 1:
+            enemy_image = pygame.transform.flip(enemy_image, True, False)
+
+        screen.blit(
+            enemy_image,
             (
                 enemy_rect.x - camera_x,
-                enemy_rect.y,
-                enemy_rect.width,
-                enemy_rect.height
+                enemy_rect.y
             )
         )
 
